@@ -1,0 +1,6 @@
+<RCC>
+    <qresource prefix="/icons">
+        <file>app_icon.ico</file>
+        <file>messagebox_icon.png</file> 
+    </qresource>
+</RCC>
