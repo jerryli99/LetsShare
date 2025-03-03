@@ -309,7 +309,7 @@ void MainWindow::removeSelectedIPs()
     for (QListWidgetItem *item : selectedItems) {
         delete item;
     }
-
+    updateAllowedIPs();
     saveConfiguration();
     updateStatus("Selected IPs removed.");
 }
