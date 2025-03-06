@@ -25,7 +25,7 @@
 
 #include "fileserver.h"
 #include "fileclient.h"
-// #include "networkscanner.h"
+#include "httpserver.h"
 
 class MainWindow : public QMainWindow
 {
@@ -44,7 +44,6 @@ private slots:
     void onFileReceived(const QString &filePath);
     void updateStatus(const QString &message);
     void onBrowseDownloadLocation();
-    // void updateIPList(const QStringList &ipList);
     void clearSentFiles();
     void clearReceivedFiles();
     void showFileListContextMenu(const QPoint &pos);
@@ -52,13 +51,19 @@ private slots:
     void updateProgress(int percentage);
     void onConnect();
     void onDisconnect();
-    // void saveConfiguration(const QString &rsaPublicKeyPath, const QString &rsaPrivateKeyPath, const QString &aesKeyPath);
     void saveConfiguration();
     void loadConfiguration();
     void addAllowedIP();
-    void showAllowedIPsContextMenu(const QPoint &pos);//added 2/20/2025
-    void removeSelectedIPs();//added 2/20/2025
-    // void generateKeys();
+    void showAllowedIPsContextMenu(const QPoint &pos);
+    void removeSelectedIPs();
+
+    void onHttpServerStarted(const QString &url);
+    void onHttpServerStopped();
+    void onAddHttpSharedFiles();
+    void onRemoveHttpSharedFiles();
+    void showHttpSharedFilesContextMenu(const QPoint &pos);
+
+    void showPowerShellScript();
 
 private:
     QListWidget *fileListWidget;
@@ -73,11 +78,7 @@ private:
     FileClient *fileClient;
     QThread *serverThread;
 
-    //2/23
-    QThread *clientThread; // New thread for FileClient
-
-    // NetworkScanner *networkScanner;
-    // QThread *networkScannerThread;
+    // QThread *clientThread; // New thread for FileClient
 
     QProgressBar *progressBar;
     QLineEdit *ipInput;
@@ -98,6 +99,18 @@ private:
     void setupConfigureTab(QWidget *tab);
     bool isValidIP(const QString &ipAddress);
     void updateAllowedIPs();
+
+    HttpServer *httpServer;
+    QThread *httpServerThread;
+    QLineEdit *httpUrlInput;
+    QPushButton *startHttpServerButton;
+    QPushButton *stopHttpServerButton;
+    QListWidget *httpSharedFilesList;
+    QPushButton *addHttpSharedFilesButton;
+    QPushButton *removeHttpSharedFilesButton;
+
+    void setupHttpServerTab(QWidget *tab);
+
 };
 
 #endif // MAINWINDOW_H

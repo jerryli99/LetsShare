@@ -28,11 +28,14 @@ qt_add_executable(LetsShare
     fileclient.h
     fileserver.cpp
     fileclient.cpp
-
-    applink.c
-    ${APP_ICON_RESOURCE_WINDOWS}
     crypto.h
     crypto.cpp
+    applink.c
+    ${APP_ICON_RESOURCE_WINDOWS}
+    httpserver.h
+    httpserver.cpp
+    scriptdialog.h
+    scriptdialog.cpp
 )
 
 qt_add_resources(LetsShare "resources.qrc")

@@ -1,4 +1,6 @@
 #include "mainwindow.h"
+#include "scriptdialog.h"
+
 #include <QNetworkInterface>
 #include <QDir>
 #include <QFileInfo>
@@ -40,6 +42,15 @@ MainWindow::MainWindow(QWidget *parent)
     connect(fileClient, &FileClient::statusUpdated, this, &MainWindow::updateStatus);
     connect(fileClient, &FileClient::progressUpdated, this, &MainWindow::updateProgress);
 
+    // Initialize HTTP server
+    httpServer = new HttpServer();
+
+    connect(httpServer, &HttpServer::serverStarted, this, &MainWindow::onHttpServerStarted);
+    connect(httpServer, &HttpServer::serverStopped, this, &MainWindow::onHttpServerStopped);
+
+    // Start the HTTP server automatically
+    httpServer->startServer(11234);
+
     loadConfiguration();
 }
 
@@ -50,6 +61,13 @@ MainWindow::~MainWindow()
 
     delete fileServer;
     delete fileClient;
+
+    // Stop the HTTP server
+    if (httpServer) {
+        httpServer->stopServer();
+        delete httpServer;
+        httpServer = nullptr;
+    }
 }
 
 void MainWindow::setupUI()
@@ -67,10 +85,16 @@ void MainWindow::setupUI()
     setupConfigureTab(configureTab);
     tabWidget->addTab(configureTab, "Configure");
 
-    // Main Tab
+    // HTTP Server Tab
+    QWidget *httpServerTab = new QWidget();
+    setupHttpServerTab(httpServerTab);
+    tabWidget->addTab(httpServerTab, "HTTP Server");
+
+    // socket transfer Tab
     QWidget *mainTab = new QWidget();
     setupMainTab(mainTab);
     tabWidget->addTab(mainTab, "Share/Receive");
+
 }
 
 void MainWindow::setupMainTab(QWidget *tab)
@@ -206,16 +230,41 @@ void MainWindow::setupHelpTab(QWidget *tab)
         "<h2>Config Tab</h2>"
         "<p>1. <b>Enter IPv4 Address:</b> This IP address will be the IP address you allow to connect to this app.</p>"
         "<p>2. <b>Press SaveConfiguration:</b> Saves the list of IPs in config.json file. </p>"
-        "<p>3. <b>Remove IP from List:</b>You can multiple select the IPs by Ctrl + left click and then right click to Remove</p>"
-        "<h2>Share Tab</h2>"
+        "<p>3. <b>Remove IP from List:</b> You can multiple select the IPs by Ctrl + left click and then right click to Remove</p>"
+        "<h2>Http Server Tab</h2>"
+        "<p>1. <b>Click add files to add files for sharing</b></p>"
+        "<p>2. <b>If you want to access the webpage from outside, just not use 127.0.0.1, replace it with 192.168.xxx.xxx stuff. </b></p>"
+        "<p>Do remember that if you want to try it using 127.0.0.1 on local computer for testing, add 127.0.0.1 to the allowed IPs in Config Tab :)</p>"
+        "<h2>Share/Receive Tab</h2>"
         "<p>1. <b>Enter IPv4 Address:</b> Enter the target IP address. </p>"
         "<p>2. <b>Select Files/Folders:</b> Click 'Add Files' to choose files or folders to send.</p>"
         "<p>3. <b>Send Files:</b> Click 'Send Files' to start the transfer.</p>"
         "<p>4. <b>Receive Files:</b> Files sent to you will appear in the 'Received Files' section.</p>"
         "<p>5. <b>Change Download Location:</b> Use the 'Browse' button to set where received files are saved.</p>"
+        "<h2>Downloading Files</h2>"
+        "<p>To download all shared files from the HTTP server:</p>"
+        "<ol>"
+        "<li>Open PowerShell as an administrator.</li>"
+        "<li>Navigate to the directory where the <code>DownloadFiles.ps1</code> script is saved or click the button below to view the script.</li>"
+        "<li>Run the script: <code>.\\DownloadFiles.ps1</code></li>"
+        "<li>Enter the HTTP server URL when prompted (e.g., <code>http://192.168.0.15:11234/abc123def/Share/</code>).</li>"
+        "<li>The script will download all files to the <code>Downloads\\SharedFiles</code> directory.</li>"
+        "</ol>"
         );
+
+    // Add a button to show the PowerShell script
+    QPushButton *showScriptButton = new QPushButton("Show PowerShell Script", tab);
+    showScriptButton->setMaximumWidth(160);
+    connect(showScriptButton, &QPushButton::clicked, this, &MainWindow::showPowerShellScript);
+
     layout->addWidget(helpText);
+    layout->addWidget(showScriptButton);
     tab->setLayout(layout);
+}
+
+void MainWindow::showPowerShellScript() {
+    ScriptDialog *dialog = new ScriptDialog(this);
+    dialog->exec(); // Show the dialog as a modal window
 }
 
 void MainWindow::setupConfigureTab(QWidget *tab)
@@ -258,6 +307,7 @@ void MainWindow::updateAllowedIPs()
     }
 
     fileServer->setAllowedIPs(allowedIPs);
+    httpServer->setAllowedIPs(allowedIPs);
 }
 
 void MainWindow::addAllowedIP()
@@ -309,6 +359,7 @@ void MainWindow::removeSelectedIPs()
     for (QListWidgetItem *item : selectedItems) {
         delete item;
     }
+
     updateAllowedIPs();
     saveConfiguration();
     updateStatus("Selected IPs removed.");
@@ -359,6 +410,7 @@ void MainWindow::loadConfiguration()
         allowedIPs.insert(allowedIPsList->item(i)->text());
     }
     fileServer->setAllowedIPs(allowedIPs);
+    httpServer->setAllowedIPs(allowedIPs);
 }
 
 void MainWindow::updateProgress(int percentage)
@@ -551,4 +603,119 @@ void MainWindow::dropEvent(QDropEvent *event)
     }
 }
 
+
+//TODO:
+void MainWindow::setupHttpServerTab(QWidget *tab) {
+    QVBoxLayout *layout = new QVBoxLayout(tab);
+
+    // Shared Files Section
+    QLabel *sharedFilesLabel = new QLabel("Shared Files:", tab);
+    httpSharedFilesList = new QListWidget(tab);
+    httpSharedFilesList->setSelectionMode(QAbstractItemView::ExtendedSelection);
+    // httpSharedFilesList->setAcceptDrops(true); // Enable drag-and-drop
+    // httpSharedFilesList->setDropIndicatorShown(true);
+    httpSharedFilesList->setContextMenuPolicy(Qt::CustomContextMenu);
+
+    // Connect the context menu signal
+    connect(httpSharedFilesList, &QListWidget::customContextMenuRequested, this, &MainWindow::showHttpSharedFilesContextMenu);
+
+    QHBoxLayout *sharedFilesButtonLayout = new QHBoxLayout();
+    addHttpSharedFilesButton = new QPushButton("Add Files", tab);
+    removeHttpSharedFilesButton = new QPushButton("Remove Files", tab);
+    sharedFilesButtonLayout->addWidget(addHttpSharedFilesButton);
+    sharedFilesButtonLayout->addWidget(removeHttpSharedFilesButton);
+
+    connect(addHttpSharedFilesButton, &QPushButton::clicked, this, &MainWindow::onAddHttpSharedFiles);
+    connect(removeHttpSharedFilesButton, &QPushButton::clicked, this, &MainWindow::onRemoveHttpSharedFiles);
+
+    // HTTP URL Display
+    QLabel *httpUrlLabel = new QLabel("HTTP URL:", tab);
+    httpUrlInput = new QLineEdit(tab);
+    httpUrlInput->setReadOnly(true);
+
+    // Add to Layout
+    layout->addWidget(sharedFilesLabel);
+    layout->addWidget(httpSharedFilesList);
+    layout->addLayout(sharedFilesButtonLayout);
+    layout->addWidget(httpUrlLabel);
+    layout->addWidget(httpUrlInput);
+
+    tab->setLayout(layout);
+}
+
+void MainWindow::onHttpServerStarted(const QString &url)
+{
+    httpUrlInput->setText(url);
+}
+
+void MainWindow::onHttpServerStopped()
+{
+    httpUrlInput->clear();
+}
+
+void MainWindow::onAddHttpSharedFiles() {
+    QStringList filesAndFolders = QFileDialog::getOpenFileNames(this, "Select Files or Folders", QDir::homePath(), "All Files (*)");
+    QStringList allFiles;
+
+    for (const QString &path : filesAndFolders) {
+        QFileInfo fileInfo(path);
+        if (fileInfo.isDir()) {
+            QDir dir(path);
+            QFileInfoList fileList = dir.entryInfoList(QDir::Files | QDir::NoDotAndDotDot | QDir::Readable, QDir::Name);
+            for (const QFileInfo &file : fileList) {
+                allFiles.append(file.absoluteFilePath());
+            }
+        } else if (fileInfo.isFile()) {
+            allFiles.append(fileInfo.absoluteFilePath());
+        }
+    }
+
+    if (!allFiles.isEmpty()) {
+        for (const QString &file : allFiles) {
+            httpServer->addSharedFile(file);
+        }
+        httpSharedFilesList->addItems(allFiles);
+    }
+}
+
+void MainWindow::onRemoveHttpSharedFiles() {
+    QList<QListWidgetItem*> selectedItems = httpSharedFilesList->selectedItems();
+    if (selectedItems.isEmpty()) {
+        QMessageBox::warning(this, "No Selection", "Please select one or more files to remove.");
+        return;
+    }
+
+    for (QListWidgetItem *item : selectedItems) {
+        httpServer->removeSharedFile(item->text()); // Remove from the server's shared files list
+        delete item; // Remove from the UI
+    }
+}
+
+
+void MainWindow::showHttpSharedFilesContextMenu(const QPoint &pos) {
+    if (httpSharedFilesList->count() == 0) {
+        return; // No files to remove
+    }
+
+    // Create the context menu
+    QMenu contextMenu(this);
+    contextMenu.setStyleSheet(
+        "QMenu::item {"
+        "    padding: 5px;"
+        "    text-align: center;"
+        "    color: black;"
+        "}"
+        "QMenu::item:selected {"
+        "    background-color: #2389db;"
+        "    color: white;"
+        "}"
+        );
+
+    // Add a "Remove" action to the context menu
+    QAction *removeAction = contextMenu.addAction("Remove Selected Files");
+    connect(removeAction, &QAction::triggered, this, &MainWindow::onRemoveHttpSharedFiles);
+
+    // Show the context menu at the requested position
+    contextMenu.exec(httpSharedFilesList->mapToGlobal(pos));
+}
 
