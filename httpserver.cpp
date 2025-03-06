@@ -212,9 +212,8 @@ void HttpServer::handleGetRequest(QTcpSocket *clientSocket, const QString &path)
             sendErrorResponse(clientSocket, "404 Not Found", "File not found.");
         }
     } else {
-        // If the path does not start with the session key, return the file list
-        // qDebug() << "Invalid session key or path:" << path; // Debug: Print if the session key is invalid
-        sendResponse(clientSocket, "200 OK", "text/html", generateFileListHtml().toUtf8());
+        sendErrorResponse(clientSocket, "403 Forbidden", "Access denied.");
+        return;
     }
 }
 
