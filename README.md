@@ -14,3 +14,8 @@ This is a quick and simple LAN file transfer app. I was going to use AES and RSA
   <img src="https://github.com/jerryli99/LetsShare/blob/main/example3.png" alt="Image 3" width="48%"/>
   <img src="https://github.com/jerryli99/LetsShare/blob/main/example4.png" alt="Image 4" width="48%"/>
 </div>
+
+<div style="display: flex; justify-content: space-between;">
+  <img src="https://github.com/jerryli99/LetsShare/blob/main/example5.png" alt="Image 5" width="48%"/>
+  <img src="https://github.com/jerryli99/LetsShare/blob/main/example6.png" alt="Image 6" width="48%"/>
+</div>
