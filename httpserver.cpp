@@ -167,15 +167,29 @@ void HttpServer::readClient()
     }
 }
 
-void HttpServer::handleGetRequest(QTcpSocket *clientSocket, const QString &path)
-{
-    if (path.startsWith("Share/")) {
-        QString filePath = QUrl::fromPercentEncoding(path.mid(6).toUtf8()); // Decode URL-encoded file path
+void HttpServer::handleGetRequest(QTcpSocket *clientSocket, const QString &path) {
+    // qDebug() << "Requested path:" << path; // Debug: Print the requested path
+
+    // Check if the path starts with the session key
+    if (path.startsWith(sessionKey + "/Share/")) {
+        QString filePath = QUrl::fromPercentEncoding(path.mid(sessionKey.length() + 7).toUtf8()); // Decode URL-encoded file path
+        // qDebug() << "Decoded file path:" << filePath; // Debug: Print the decoded file path
+
+        // If the file path is empty, return the file list
+        if (filePath.isEmpty()) {
+            // qDebug() << "Requested directory, returning file list.";
+            sendResponse(clientSocket, "200 OK", "text/html", generateFileListHtml().toUtf8());
+            return;
+        }
+
         bool fileFound = false;
 
         for (const QString &sharedFile : sharedFiles) {
             QFileInfo fileInfo(sharedFile);
+            // qDebug() << "Checking shared file:" << fileInfo.fileName(); // Debug: Print each shared file name
+
             if (fileInfo.fileName() == filePath) {
+                qDebug() << "File found:" << sharedFile; // Debug: Print the matched file
                 QFile file(sharedFile);
                 if (file.open(QIODevice::ReadOnly)) {
                     QString mimeType = getMimeType(sharedFile);
@@ -194,12 +208,16 @@ void HttpServer::handleGetRequest(QTcpSocket *clientSocket, const QString &path)
         }
 
         if (!fileFound) {
+            // qDebug() << "File not found:" << filePath; // Debug: Print if the file is not found
             sendErrorResponse(clientSocket, "404 Not Found", "File not found.");
         }
     } else {
+        // If the path does not start with the session key, return the file list
+        // qDebug() << "Invalid session key or path:" << path; // Debug: Print if the session key is invalid
         sendResponse(clientSocket, "200 OK", "text/html", generateFileListHtml().toUtf8());
     }
 }
+
 
 void HttpServer::sendResponse(QTcpSocket *clientSocket, const QString &status, const QString &contentType, const QByteArray &body)
 {
@@ -222,7 +240,7 @@ QString HttpServer::generateFileListHtml() {
     for (const QString &filePath : sharedFiles) {
         QFileInfo fileInfo(filePath);
         QString fileName = fileInfo.fileName();
-        QString fileUrl = "/Share/" + QUrl::toPercentEncoding(fileName);
+        QString fileUrl = "/" + sessionKey + "/Share/" + QUrl::toPercentEncoding(fileName); // Include session key in the URL
         QString mimeType = getMimeType(filePath);
 
         html += "<li>";
@@ -238,6 +256,7 @@ QString HttpServer::generateFileListHtml() {
 
     return html;
 }
+
 
 QString HttpServer::getMimeType(const QString &filePath)
 {
